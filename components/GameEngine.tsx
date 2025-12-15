@@ -6,7 +6,7 @@ import {
   GRAVITY, SHIP_GRAVITY, JUMP_FORCE, SHIP_LIFT, SHIP_MAX_RISE, GROUND_HEIGHT, 
   PLAYER_SIZE, PARTICLE_COUNT, LEVELS, SHOP_ITEMS 
 } from '../constants';
-import { Play, RotateCcw, ChevronLeft, ChevronRight, Trophy, Rocket, ShoppingCart, Lock, Check, Circle, X } from 'lucide-react';
+import { Play, RotateCcw, ChevronLeft, ChevronRight, Trophy, Rocket, ShoppingCart, Lock, Check, Circle, X, Zap } from 'lucide-react';
 
 const GameEngine: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -18,6 +18,8 @@ const GameEngine: React.FC = () => {
   const scoreRef = useRef<number>(0);
   const distanceRef = useRef<number>(0);
   const isHoldingRef = useRef<boolean>(false); 
+  const isChallengeModeRef = useRef<boolean>(false);
+  const lastMilestoneRef = useRef<number>(0); // Track milestones (1000m, 2000m...)
   
   // User Persistence
   const [userData, setUserData] = useState<UserData>({
@@ -72,6 +74,8 @@ const GameEngine: React.FC = () => {
   const [progress, setProgress] = useState(0);
   const [score, setScore] = useState(0);
   const [earnedOrbs, setEarnedOrbs] = useState(0);
+  const [challengeDistance, setChallengeDistance] = useState(0);
+  const [notification, setNotification] = useState<string | null>(null);
 
   // Helper variables and functions for UI
   const currentLevelData = LEVELS[selectedLevelIndex];
@@ -105,12 +109,13 @@ const GameEngine: React.FC = () => {
     return skin ? skin.color : '#00f2ff';
   }, [userData.equippedSkin]);
 
-  // Initialize Game
+  // Initialize Standard Game
   const initGame = useCallback(() => {
     if (!canvasRef.current) return;
     const canvas = canvasRef.current;
     const level = LEVELS[selectedLevelIndex];
-    currentLevelRef.current = level;
+    currentLevelRef.current = { ...level }; // Clone to avoid modifying constant
+    isChallengeModeRef.current = false;
     
     playerRef.current = {
       x: canvas.width * 0.2,
@@ -120,11 +125,10 @@ const GameEngine: React.FC = () => {
       dy: 0,
       rotation: 0,
       isGrounded: true,
-      color: getCurrentSkinColor(), // Use equipped skin
+      color: getCurrentSkinColor(), 
       mode: level.mode
     };
     
-    // In Ship mode, start in middle of air
     if (level.mode === PlayerMode.SHIP) {
         playerRef.current.y = canvas.height / 2;
         playerRef.current.isGrounded = false;
@@ -140,18 +144,83 @@ const GameEngine: React.FC = () => {
     setScore(0);
     setProgress(0);
     setEarnedOrbs(0);
+    setChallengeDistance(0);
+    setNotification(null);
     
     gameStateRef.current = GameState.PLAYING;
     setUiState(GameState.PLAYING);
     setShowStore(false);
   }, [selectedLevelIndex, getCurrentSkinColor]);
 
+  // Initialize Challenge Mode
+  const startChallengeMode = useCallback(() => {
+    if (!canvasRef.current) return;
+    const canvas = canvasRef.current;
+    
+    isChallengeModeRef.current = true;
+    lastMilestoneRef.current = 0;
+    
+    // Construct Infinite Level
+    const challengeLevel: LevelData = {
+        id: 999,
+        name: "THỬ THÁCH VÔ TẬN",
+        difficulty: "TĂNG DẦN",
+        speed: 8.0, // Start speed
+        mode: PlayerMode.CUBE,
+        length: 10000000, // Effectively infinite
+        colors: {
+            background: '#1a001a',
+            ground: '#ff00aa',
+            player: '#00ffff',
+            obstacle: '#ffff00',
+            secondary: '#330033'
+        }
+    };
+    currentLevelRef.current = challengeLevel;
+
+    playerRef.current = {
+      x: canvas.width * 0.2,
+      y: canvas.height - GROUND_HEIGHT - PLAYER_SIZE,
+      width: PLAYER_SIZE,
+      height: PLAYER_SIZE,
+      dy: 0,
+      rotation: 0,
+      isGrounded: true,
+      color: getCurrentSkinColor(), 
+      mode: PlayerMode.CUBE
+    };
+
+    obstaclesRef.current = [];
+    particlesRef.current = [];
+    scoreRef.current = 0;
+    distanceRef.current = 0;
+    patternStepRef.current = 0;
+    patternTypeRef.current = 'NONE';
+    
+    setScore(0);
+    setProgress(0);
+    setEarnedOrbs(0);
+    setChallengeDistance(0);
+    setNotification(null);
+    
+    gameStateRef.current = GameState.PLAYING;
+    setUiState(GameState.PLAYING);
+    setShowStore(false);
+  }, [getCurrentSkinColor]);
+
   const endGame = (completed: boolean) => {
-      const currentProg = Math.min(100, Math.floor((distanceRef.current / currentLevelRef.current.length) * 100));
+      let reward = 0;
       
-      // Calculate reward: 1 Orb per 10% completion, Bonus 20 for completion
-      let reward = Math.floor(currentProg / 10);
-      if (completed) reward += 20;
+      if (isChallengeModeRef.current) {
+          // Reward for challenge mode: 1 orb per 100m
+          const dist = Math.floor(distanceRef.current / 100);
+          reward = dist;
+      } else {
+          // Standard level reward
+          const currentProg = Math.min(100, Math.floor((distanceRef.current / currentLevelRef.current.length) * 100));
+          reward = Math.floor(currentProg / 10);
+          if (completed) reward += 20;
+      }
 
       if (reward > 0) {
         setEarnedOrbs(reward);
@@ -170,6 +239,7 @@ const GameEngine: React.FC = () => {
           gameStateRef.current = GameState.GAME_OVER;
           setUiState(GameState.GAME_OVER);
       }
+      setNotification(null);
   };
 
   const spawnParticles = (x: number, y: number, color: string) => {
@@ -203,8 +273,6 @@ const GameEngine: React.FC = () => {
 
     isHoldingRef.current = true;
     
-    // Initial jump logic moved to main loop for auto-jump consistency
-    // But we still trigger one immediately if grounded to ensure responsiveness
     const player = playerRef.current;
     if (player.mode === PlayerMode.CUBE && player.isGrounded) {
          player.dy = JUMP_FORCE;
@@ -306,6 +374,43 @@ const GameEngine: React.FC = () => {
       // 2. Logic
       if (gameStateRef.current === GameState.PLAYING) {
         const player = playerRef.current;
+
+        // --- CHALLENGE MODE LOGIC ---
+        if (isChallengeModeRef.current) {
+            // Gradually increase speed
+            if (level.speed < 18) {
+                level.speed += 0.0015;
+            }
+            // Update distance UI state occasionally
+            const currentMeters = Math.floor(distanceRef.current / 10);
+            if (currentMeters !== challengeDistance) setChallengeDistance(currentMeters);
+
+            // MILESTONE CHECK (Every 1000m)
+            const milestone = Math.floor(currentMeters / 1000);
+            if (milestone > lastMilestoneRef.current) {
+                lastMilestoneRef.current = milestone;
+
+                // 1. Change Map Colors (Randomly pick from other levels)
+                const randomLevel = LEVELS[Math.floor(Math.random() * LEVELS.length)];
+                level.colors = randomLevel.colors;
+                
+                // 2. Handle specific milestones
+                if (milestone === 1) { // 1000m
+                     player.mode = PlayerMode.SHIP;
+                     level.mode = PlayerMode.SHIP;
+                     setNotification("1000M ĐẠT ĐƯỢC! KÍCH HOẠT CHẾ ĐỘ BAY");
+                } else {
+                     // 2000m+
+                     setNotification(`KỶ LỤC MỚI: ${milestone * 1000}M! CHUYỂN ĐỔI KHÔNG GIAN...`);
+                }
+
+                // 3. Effects
+                spawnParticles(player.x + player.width/2, player.y + player.height/2, '#ffffff');
+                // Auto clear notification
+                setTimeout(() => setNotification(null), 4000);
+            }
+        }
+
         
         // --- AUTO JUMP CHECK (Bunny Hop) ---
         if (player.mode === PlayerMode.CUBE && isHoldingRef.current && player.isGrounded) {
@@ -358,81 +463,104 @@ const GameEngine: React.FC = () => {
 
         // --- PROGRESS ---
         distanceRef.current += level.speed;
-        const currentProg = Math.min(100, Math.floor((distanceRef.current / level.length) * 100));
-        if (currentProg !== progress) setProgress(currentProg);
+        
+        if (!isChallengeModeRef.current) {
+            const currentProg = Math.min(100, Math.floor((distanceRef.current / level.length) * 100));
+            if (currentProg !== progress) setProgress(currentProg);
 
-        if (distanceRef.current >= level.length) {
-            endGame(true);
+            if (distanceRef.current >= level.length) {
+                endGame(true);
+            }
         }
         
         // --- OBSTACLES GENERATION ---
         const lastObstacle = obstaclesRef.current[obstaclesRef.current.length - 1];
         
-        // == SHIP MODE GENERATION (Standard Pillars & Barriers) ==
+        // == SHIP MODE GENERATION ==
+        // Note: checking level.mode here ensures obstacles switch correctly 
+        // when we dynamically update level.mode in Challenge Mode
         if (level.mode === PlayerMode.SHIP) {
-            const minGap = 400; // More space for ship
-            const maxGap = 700;
-            
-            if (!lastObstacle || (canvas.width - lastObstacle.x > Math.random() * (maxGap - minGap) + minGap)) {
-                const type = Math.random();
+            const blockWidth = 50;
+            if (!lastObstacle || (canvas.width - lastObstacle.x >= blockWidth)) {
+                const time = distanceRef.current * 0.005; 
                 
-                if (type > 0.6) {
-                     // Dual Pillars (Gate)
-                     const gapHeight = 180;
-                     const gapY = Math.random() * (canvas.height - GROUND_HEIGHT - gapHeight - 100) + 50;
-                     
-                     // Top
-                     obstaclesRef.current.push({
-                         id: Date.now() + Math.random(),
-                         x: canvas.width,
-                         y: 0,
-                         width: 60,
-                         height: gapY,
-                         type: ObstacleType.BLOCK,
-                         passed: false
-                     });
-                     
-                     // Bottom
-                     obstaclesRef.current.push({
-                         id: Date.now() + Math.random() + 1,
-                         x: canvas.width,
-                         y: gapY + gapHeight,
-                         width: 60,
-                         height: canvas.height - GROUND_HEIGHT - (gapY + gapHeight),
-                         type: ObstacleType.BLOCK,
-                         passed: false
-                     });
-                 } else if (type > 0.3) {
-                     // Mid-air block
-                     obstaclesRef.current.push({
-                         id: Date.now() + Math.random(),
-                         x: canvas.width,
-                         y: Math.random() * (canvas.height - GROUND_HEIGHT - 150) + 50,
-                         width: 80,
-                         height: 80,
-                         type: ObstacleType.BLOCK,
-                         passed: false
-                     });
-                 } else {
-                     // Simple Spike
-                     obstaclesRef.current.push({
+                // Difficulty scaling
+                let amp = 100;
+                let complex = 50;
+                let ceilingChance = 0.4;
+
+                if (level.difficulty === 'EASY' || level.difficulty === 'NORMAL') {
+                    amp = 60; complex = 20;
+                    ceilingChance = 0.1;
+                } else if (level.difficulty === 'EXPERT') {
+                    amp = 120; complex = 60;
+                    ceilingChance = 0.4;
+                } else if (['INSANE', 'DEMON', 'LEGENDARY', 'TĂNG DẦN'].includes(level.difficulty)) {
+                    // For Challenge Mode ('TĂNG DẦN'), use Hard/Expert scaling
+                    amp = 120 + Math.min(30, (level.speed - 8) * 10);
+                    complex = 60;
+                    ceilingChance = 0.5;
+                }
+                
+                const baseHeight = 150;
+                const waveHeight = Math.sin(time) * amp + Math.sin(time * 2.5) * complex; 
+                const terrainHeight = Math.max(20, baseHeight + waveHeight);
+                const ceilingHeight = Math.max(20, baseHeight - waveHeight);
+
+                obstaclesRef.current.push({
+                    id: Date.now() + Math.random(),
+                    x: canvas.width,
+                    y: canvas.height - GROUND_HEIGHT - terrainHeight,
+                    width: blockWidth + 2,
+                    height: terrainHeight,
+                    type: ObstacleType.BLOCK,
+                    passed: false
+                });
+
+                if (Math.random() > (1 - ceilingChance)) { 
+                    obstaclesRef.current.push({
                         id: Date.now() + Math.random(),
                         x: canvas.width,
-                        y: Math.random() > 0.5 ? canvas.height - GROUND_HEIGHT - 50 : 0, // Floor or Ceiling spike
-                        width: 50,
-                        height: 50,
-                        type: ObstacleType.SPIKE,
+                        y: 0,
+                        width: blockWidth + 2,
+                        height: ceilingHeight,
+                        type: ObstacleType.BLOCK,
                         passed: false
-                     });
-                 }
+                    });
+                }
+
+                if (['HARD', 'EXPERT', 'INSANE', 'DEMON', 'LEGENDARY', 'TĂNG DẦN'].includes(level.difficulty)) {
+                     const spikeChance = isChallengeModeRef.current ? 0.98 : 0.95;
+                     if (Math.random() > spikeChance) {
+                        obstaclesRef.current.push({
+                            id: Date.now() + Math.random(),
+                            x: canvas.width,
+                            y: canvas.height / 2,
+                            width: 40,
+                            height: 40,
+                            type: ObstacleType.SPIKE,
+                            passed: false
+                        });
+                    }
+                }
             }
         } 
-        // == CUBE MODE GENERATION (Stairs & Spikes) ==
+        // == CUBE MODE GENERATION ==
         else {
-            const minGap = 200 + (level.speed * 10); 
-            const maxGap = 500 + (level.speed * 20);
+            let minGap = 200 + (level.speed * 10); 
+            let maxGap = 500 + (level.speed * 20);
+            
+            // In challenge mode, gaps get tighter as speed increases
+            if (isChallengeModeRef.current) {
+                const speedFactor = Math.max(0, (level.speed - 8) * 10);
+                minGap = Math.max(180, minGap - speedFactor);
+                maxGap = Math.max(300, maxGap - speedFactor);
+            }
+            
+            // In Challenge Mode (Cube phase), disable high blocks/stairs
+            const allowComplexBlocks = !isChallengeModeRef.current;
 
-            if (patternTypeRef.current === 'STAIRS') {
+            if (allowComplexBlocks && patternTypeRef.current === 'STAIRS') {
                 const stairGap = 50 + level.speed * 4; 
                 if (canvas.width - lastObstacle.x > stairGap) {
                     patternStepRef.current++;
@@ -455,7 +583,7 @@ const GameEngine: React.FC = () => {
             }
             else if (!lastObstacle || (canvas.width - lastObstacle.x > Math.random() * (maxGap - minGap) + minGap)) {
                 const rand = Math.random();
-                if (rand > 0.8) {
+                if (allowComplexBlocks && rand > 0.8) {
                     patternTypeRef.current = 'STAIRS';
                     patternStepRef.current = 0;
                     obstaclesRef.current.push({
@@ -468,7 +596,8 @@ const GameEngine: React.FC = () => {
                         passed: false
                     });
                 } else {
-                    if (rand > 0.5) {
+                    if (allowComplexBlocks && rand > 0.6) {
+                        // Regular Block
                         obstaclesRef.current.push({
                             id: Date.now() + Math.random(),
                             x: canvas.width,
@@ -478,12 +607,25 @@ const GameEngine: React.FC = () => {
                             type: ObstacleType.BLOCK,
                             passed: false
                         });
-                    } else {
-                        obstaclesRef.current.push({
+                    } else if (rand > 0.3) {
+                         // Standard Spike
+                         obstaclesRef.current.push({
                             id: Date.now() + Math.random(),
                             x: canvas.width,
                             y: canvas.height - GROUND_HEIGHT - 40,
                             width: 40,
+                            height: 40,
+                            type: ObstacleType.SPIKE,
+                            passed: false
+                        });
+                    } else {
+                        // Double spike or wide obstacle if fast enough
+                        const width = isChallengeModeRef.current && level.speed > 10 ? 70 : 40;
+                        obstaclesRef.current.push({
+                            id: Date.now() + Math.random(),
+                            x: canvas.width,
+                            y: canvas.height - GROUND_HEIGHT - 40,
+                            width: width,
                             height: 40,
                             type: ObstacleType.SPIKE,
                             passed: false
@@ -652,7 +794,7 @@ const GameEngine: React.FC = () => {
       window.removeEventListener('resize', resizeCanvas);
       cancelAnimationFrame(frameIdRef.current);
     };
-  }, [initGame, uiState, getCurrentSkinColor]); // Added getCurrentSkinColor dep
+  }, [initGame, startChallengeMode, uiState, getCurrentSkinColor]); 
 
   return (
     <div 
@@ -672,13 +814,22 @@ const GameEngine: React.FC = () => {
         <div className="flex justify-between items-start w-full">
             {uiState !== GameState.MENU ? (
              <div className="flex flex-col">
-               <div className="w-48 h-4 bg-gray-800 rounded-full overflow-hidden border border-gray-600">
-                  <div 
-                    className="h-full bg-gradient-to-r from-cyan-500 to-purple-500 transition-all duration-100 ease-linear"
-                    style={{ width: `${progress}%` }}
-                  />
-               </div>
-               <span className="text-white text-xs mt-1 font-bold">{progress}%</span>
+               {isChallengeModeRef.current ? (
+                  <div className="bg-black/40 backdrop-blur border border-purple-500/50 px-4 py-2 rounded-xl">
+                      <div className="text-purple-400 text-xs font-bold uppercase tracking-wider mb-1">Khoảng cách</div>
+                      <div className="text-white text-2xl font-black font-mono">{challengeDistance}m</div>
+                  </div>
+               ) : (
+                  <>
+                    <div className="w-48 h-4 bg-gray-800 rounded-full overflow-hidden border border-gray-600">
+                        <div 
+                            className="h-full bg-gradient-to-r from-cyan-500 to-purple-500 transition-all duration-100 ease-linear"
+                            style={{ width: `${progress}%` }}
+                        />
+                    </div>
+                    <span className="text-white text-xs mt-1 font-bold">{progress}%</span>
+                  </>
+               )}
              </div>
             ) : (
                 // Orbs Counter in Menu
@@ -689,9 +840,20 @@ const GameEngine: React.FC = () => {
             )}
              
              <div className="flex flex-col items-end">
-               <span className="text-gray-400 text-sm font-bold tracking-widest">{currentLevelData.name}</span>
+               <span className="text-gray-400 text-sm font-bold tracking-widest">{currentLevelRef.current.name}</span>
              </div>
         </div>
+
+        {/* NOTIFICATION POPUP */}
+        {notification && (
+            <div className="absolute top-1/4 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full px-4 text-center z-50 animate-bounce">
+                <div className="bg-gradient-to-r from-purple-600/90 to-blue-600/90 backdrop-blur-md border border-white/20 p-4 rounded-xl shadow-[0_0_30px_rgba(147,51,234,0.5)]">
+                    <h3 className="text-white font-black text-xl md:text-3xl italic uppercase drop-shadow-md">
+                        {notification}
+                    </h3>
+                </div>
+            </div>
+        )}
 
         {/* Center Menus */}
         {uiState === GameState.MENU && !showStore && (
@@ -702,7 +864,7 @@ const GameEngine: React.FC = () => {
              <p className="text-sm text-cyan-400 font-bold tracking-widest mb-6 opacity-80">by Nhutcoder</p>
              
              {/* Level Selector Card */}
-             <div className="bg-gray-900/80 backdrop-blur-md border border-gray-700 p-6 rounded-2xl shadow-2xl mx-4">
+             <div className="bg-gray-900/80 backdrop-blur-md border border-gray-700 p-6 rounded-2xl shadow-2xl mx-4 mb-4">
                 <div className="flex items-center justify-between mb-4">
                     <button onClick={prevLevel} className="p-2 hover:bg-gray-700 rounded-full transition text-white"><ChevronLeft size={32} /></button>
                     <div className="text-center">
@@ -738,6 +900,14 @@ const GameEngine: React.FC = () => {
                     </button>
                 </div>
              </div>
+
+             {/* Challenge Mode Button */}
+             <button 
+                onClick={(e) => { e.stopPropagation(); startChallengeMode(); }}
+                className="mx-4 w-[calc(100%-2rem)] py-3 bg-gradient-to-r from-purple-900 to-purple-600 border border-purple-500/50 hover:brightness-125 text-white font-black text-lg rounded-xl shadow-lg transform transition active:scale-95 flex items-center justify-center gap-2"
+             >
+                <Zap className="fill-yellow-400 text-yellow-400" /> CHẾ ĐỘ THỬ THÁCH
+             </button>
           </div>
         )}
 
@@ -801,8 +971,17 @@ const GameEngine: React.FC = () => {
           <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center pointer-events-auto z-10 bg-black/90 p-8 rounded-2xl border border-red-500/50 backdrop-blur-md shadow-2xl min-w-[300px]">
              <h2 className="text-5xl font-black text-red-500 mb-2">THẤT BẠI</h2>
              <div className="text-center mb-6">
-                <div className="text-4xl font-bold text-white mb-1">{progress}%</div>
-                <div className="text-xs text-gray-400 uppercase tracking-widest">Hoàn thành</div>
+                {isChallengeModeRef.current ? (
+                     <>
+                        <div className="text-4xl font-bold text-white mb-1">{Math.floor(distanceRef.current / 10)}m</div>
+                        <div className="text-xs text-gray-400 uppercase tracking-widest">Kỷ lục mới?</div>
+                     </>
+                ) : (
+                    <>
+                        <div className="text-4xl font-bold text-white mb-1">{progress}%</div>
+                        <div className="text-xs text-gray-400 uppercase tracking-widest">Hoàn thành</div>
+                    </>
+                )}
              </div>
              
              {earnedOrbs > 0 && (
@@ -820,7 +999,11 @@ const GameEngine: React.FC = () => {
                    MENU
                  </button>
                  <button 
-                   onClick={(e) => { e.stopPropagation(); initGame(); }}
+                   onClick={(e) => { 
+                       e.stopPropagation(); 
+                       if (isChallengeModeRef.current) startChallengeMode();
+                       else initGame(); 
+                   }}
                    className="flex-1 py-3 bg-white text-black font-black rounded-lg hover:bg-gray-200 transition flex items-center justify-center gap-2"
                  >
                    <RotateCcw size={18} /> CHƠI LẠI
@@ -833,7 +1016,7 @@ const GameEngine: React.FC = () => {
           <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center pointer-events-auto z-10 bg-black/90 p-8 rounded-2xl border border-yellow-500/50 backdrop-blur-md shadow-2xl min-w-[300px]">
              <Trophy className="w-16 h-16 text-yellow-400 mx-auto mb-4 animate-bounce" />
              <h2 className="text-4xl font-black text-white mb-2">HOÀN THÀNH!</h2>
-             <p className="text-gray-400 mb-6">Đã chinh phục {currentLevelData.name}</p>
+             <p className="text-gray-400 mb-6">Đã chinh phục {currentLevelRef.current.name}</p>
 
              {earnedOrbs > 0 && (
                  <div className="mb-8 bg-yellow-500/10 border border-yellow-500/30 p-3 rounded-lg flex justify-center items-center gap-2 text-yellow-400">

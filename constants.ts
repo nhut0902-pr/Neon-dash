@@ -227,6 +227,157 @@ export const LEVELS: LevelData[] = [
       obstacle: '#ff0000',
       secondary: '#cccccc'
     }
+  },
+  // --- 10 NEW LEVELS BELOW ---
+  {
+    id: 14,
+    name: "ELECTRO SHOCK",
+    difficulty: "HARD",
+    speed: 8.8,
+    mode: PlayerMode.CUBE,
+    length: 8500,
+    colors: {
+      background: '#000022',
+      ground: '#0000ff',
+      player: '#00ffff',
+      obstacle: '#ffff00',
+      secondary: '#000044'
+    }
+  },
+  {
+    id: 15,
+    name: "ZERO GRAVITY",
+    difficulty: "NORMAL",
+    speed: 7.2,
+    mode: PlayerMode.SHIP,
+    length: 6800,
+    colors: {
+      background: '#1a1a2e',
+      ground: '#e94560',
+      player: '#16213e',
+      obstacle: '#0f3460',
+      secondary: '#533483'
+    }
+  },
+  {
+    id: 16,
+    name: "CYBER CHASE",
+    difficulty: "HARD",
+    speed: 9.2,
+    mode: PlayerMode.CUBE,
+    length: 9500,
+    colors: {
+      background: '#020202',
+      ground: '#00ff00',
+      player: '#ff00ff',
+      obstacle: '#00ff00',
+      secondary: '#050505'
+    }
+  },
+  {
+    id: 17,
+    name: "DREAMSCAPE",
+    difficulty: "EASY",
+    speed: 6.2,
+    mode: PlayerMode.SHIP,
+    length: 4800,
+    colors: {
+      background: '#2b2d42',
+      ground: '#8d99ae',
+      player: '#edf2f4',
+      obstacle: '#ef233c',
+      secondary: '#d90429'
+    }
+  },
+  {
+    id: 18,
+    name: "MAGMA BOUND",
+    difficulty: "EXPERT",
+    speed: 9.8,
+    mode: PlayerMode.CUBE,
+    length: 10500,
+    colors: {
+      background: '#3d0c02',
+      ground: '#ff6b35',
+      player: '#f7c59f',
+      obstacle: '#efefd0',
+      secondary: '#004e89'
+    }
+  },
+  {
+    id: 19,
+    name: "STAR DUST",
+    difficulty: "NORMAL",
+    speed: 7.8,
+    mode: PlayerMode.CUBE,
+    length: 7500,
+    colors: {
+      background: '#0b132b',
+      ground: '#6fffe9',
+      player: '#5bc0be',
+      obstacle: '#3a506b',
+      secondary: '#1c2541'
+    }
+  },
+  {
+    id: 20,
+    name: "DIMENSION",
+    difficulty: "EXPERT",
+    speed: 10.2,
+    mode: PlayerMode.SHIP,
+    length: 11000,
+    colors: {
+      background: '#240046',
+      ground: '#7b2cbf',
+      player: '#c77dff',
+      obstacle: '#e0aaff',
+      secondary: '#3c096c'
+    }
+  },
+  {
+    id: 21,
+    name: "GLITCH",
+    difficulty: "INSANE",
+    speed: 11.5,
+    mode: PlayerMode.CUBE,
+    length: 13000,
+    colors: {
+      background: '#000000',
+      ground: '#00ff00',
+      player: '#ffffff',
+      obstacle: '#ff0000',
+      secondary: '#333333'
+    }
+  },
+  {
+    id: 22,
+    name: "ETERNITY",
+    difficulty: "DEMON",
+    speed: 12.5,
+    mode: PlayerMode.SHIP,
+    length: 16000,
+    colors: {
+      background: '#10002b',
+      ground: '#e0aaff',
+      player: '#9d4edd',
+      obstacle: '#c77dff',
+      secondary: '#240046'
+    }
+  },
+  {
+    id: 23,
+    name: "FINAL DESTINATION",
+    difficulty: "LEGENDARY",
+    speed: 15.0,
+    mode: PlayerMode.CUBE,
+    length: 25000,
+    colors: {
+      background: '#000000',
+      ground: '#ffffff',
+      player: '#000000',
+      obstacle: '#ff0000',
+      secondary: '#666666'
+    }
   }
 ];
 
