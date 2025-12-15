@@ -557,10 +557,12 @@ const GameEngine: React.FC = () => {
                 maxGap = Math.max(300, maxGap - speedFactor);
             }
             
-            // In Challenge Mode (Cube phase), disable high blocks/stairs
-            const allowComplexBlocks = !isChallengeModeRef.current;
+            // In Challenge Mode (Cube phase):
+            // - Disable stairs (high blocks)
+            // - Allow basic ground blocks (so it's not just spikes)
+            const allowStairs = !isChallengeModeRef.current;
 
-            if (allowComplexBlocks && patternTypeRef.current === 'STAIRS') {
+            if (allowStairs && patternTypeRef.current === 'STAIRS') {
                 const stairGap = 50 + level.speed * 4; 
                 if (canvas.width - lastObstacle.x > stairGap) {
                     patternStepRef.current++;
@@ -583,7 +585,7 @@ const GameEngine: React.FC = () => {
             }
             else if (!lastObstacle || (canvas.width - lastObstacle.x > Math.random() * (maxGap - minGap) + minGap)) {
                 const rand = Math.random();
-                if (allowComplexBlocks && rand > 0.8) {
+                if (allowStairs && rand > 0.8) {
                     patternTypeRef.current = 'STAIRS';
                     patternStepRef.current = 0;
                     obstaclesRef.current.push({
@@ -596,8 +598,8 @@ const GameEngine: React.FC = () => {
                         passed: false
                     });
                 } else {
-                    if (allowComplexBlocks && rand > 0.6) {
-                        // Regular Block
+                    if (rand > 0.6) {
+                        // Regular Block (Ground level)
                         obstaclesRef.current.push({
                             id: Date.now() + Math.random(),
                             x: canvas.width,
